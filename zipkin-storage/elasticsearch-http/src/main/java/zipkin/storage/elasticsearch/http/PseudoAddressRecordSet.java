@@ -1,5 +1,5 @@
 /**
- * Copyright 2015-2016 The OpenZipkin Authors
+ * Copyright 2015-2017 The OpenZipkin Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License. You may obtain a copy of the License at
@@ -13,17 +13,16 @@
  */
 package zipkin.storage.elasticsearch.http;
 
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.Sets;
-import com.google.common.net.InetAddresses;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import okhttp3.Dns;
 import okhttp3.HttpUrl;
 
-import static com.google.common.base.Preconditions.checkArgument;
+import static zipkin.internal.Util.checkArgument;
 
 /**
  * This returns a Dns provider that combines the IPv4 or IPv6 addresses from a supplied list of
@@ -32,16 +31,28 @@ import static com.google.common.base.Preconditions.checkArgument;
 final class PseudoAddressRecordSet {
 
   static Dns create(List<String> urls, Dns actualDns) {
-    Set<String> schemes = Sets.newLinkedHashSet();
-    Set<String> hosts = Sets.newLinkedHashSet();
-    Set<InetAddress> ipAddresses = Sets.newLinkedHashSet();
-    Set<Integer> ports = Sets.newLinkedHashSet();
+    Set<String> schemes = new LinkedHashSet<>();
+    Set<String> hosts = new LinkedHashSet<>();
+    Set<InetAddress> ipAddresses = new LinkedHashSet<>();
+    Set<Integer> ports = new LinkedHashSet<>();
 
     for (String url : urls) {
       HttpUrl httpUrl = HttpUrl.parse(url);
       schemes.add(httpUrl.scheme());
-      if (InetAddresses.isInetAddress(httpUrl.host())) {
-        ipAddresses.add(InetAddresses.forString(httpUrl.host()));
+
+      // Kick out if we can't cheaply read the address
+      byte[] addressBytes = null;
+      try {
+        addressBytes = ipStringToBytes(httpUrl.host());
+      } catch (RuntimeException e) {
+      }
+
+      if (addressBytes != null) {
+        try {
+          ipAddresses.add(InetAddress.getByAddress(addressBytes));
+        } catch (UnknownHostException e) {
+          hosts.add(httpUrl.host());
+        }
       } else {
         hosts.add(httpUrl.host());
       }
@@ -60,7 +71,7 @@ final class PseudoAddressRecordSet {
     private final List<InetAddress> ipAddresses;
 
     StaticDns(Set<InetAddress> ipAddresses) {
-      this.ipAddresses = ImmutableList.copyOf(ipAddresses);
+      this.ipAddresses = new ArrayList<>(ipAddresses);
     }
 
     @Override public List<InetAddress> lookup(String hostname) {
@@ -84,16 +95,29 @@ final class PseudoAddressRecordSet {
     }
 
     @Override public List<InetAddress> lookup(String hostname) throws UnknownHostException {
-      ImmutableList.Builder<InetAddress> result = ImmutableList.builder();
+      List<InetAddress> result = new ArrayList<>(ipAddresses.size() + hosts.size());
       result.addAll(ipAddresses);
       for (String host : hosts) {
         result.addAll(actualDns.lookup(host));
       }
-      return result.build();
+      return result;
     }
 
     @Override public String toString() {
       return "ConcatenatingDns(" + ipAddresses + "," + hosts + ")";
     }
+  }
+
+  /**
+   * Returns the {@link InetAddress#getAddress()} having the given string representation or null if
+   * unable to parse.
+   *
+   * <p>This deliberately avoids all nameservice lookups (e.g. no DNS).
+   *
+   * @param ipString {@code String} containing an IPv4 or IPv6 string literal, e.g. {@code
+   * "192.168.0.1"} or {@code "2001:db8::1"}
+   */
+  static byte[] ipStringToBytes(String ipString) {
+    return InetAddresses.ipStringToBytes(ipString);
   }
 }

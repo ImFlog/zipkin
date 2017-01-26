@@ -17,20 +17,18 @@ import java.util.List;
 import zipkin.Codec;
 import zipkin.DependencyLink;
 import zipkin.internal.CallbackCaptor;
-import zipkin.storage.elasticsearch.InternalElasticsearchClient;
 
-import static com.google.common.base.Preconditions.checkArgument;
+import static zipkin.storage.elasticsearch.http.ElasticsearchHttpSpanStore.DEPENDENCY_LINK;
 
-public class HttpElasticsearchDependencyWriter {
-  public static void writeDependencyLinks(InternalElasticsearchClient genericClient,
-      List<DependencyLink> links, String index, String type) {
-    checkArgument(genericClient instanceof HttpClient, "");
-    HttpClient client = (HttpClient) genericClient;
-    HttpBulkIndexer<DependencyLink> indexer = new HttpBulkIndexer<DependencyLink>(client, type){
-      @Override byte[] toJsonBytes(DependencyLink link) {
-        return Codec.JSON.writeDependencyLink(link);
-      }
-    };
+class HttpElasticsearchDependencyWriter {
+  static void writeDependencyLinks(ElasticsearchHttpStorage es, List<DependencyLink> links,
+      String index) {
+    HttpBulkIndexer<DependencyLink> indexer =
+        new HttpBulkIndexer<DependencyLink>(DEPENDENCY_LINK, es) {
+          @Override byte[] toJsonBytes(DependencyLink link) {
+            return Codec.JSON.writeDependencyLink(link);
+          }
+        };
     for (DependencyLink link : links) {
       indexer.add(index, link, link.parent + "|" + link.child); // Unique constraint
     }

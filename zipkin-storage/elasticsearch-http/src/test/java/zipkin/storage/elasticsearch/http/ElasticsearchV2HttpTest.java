@@ -11,7 +11,7 @@
  * or implied. See the License for the specific language governing permissions and limitations under
  * the License.
  */
-package zipkin.storage.elasticsearch;
+package zipkin.storage.elasticsearch.http;
 
 import java.io.IOException;
 import org.junit.ClassRule;
@@ -28,21 +28,25 @@ public class ElasticsearchV2HttpTest {
 
   public static class DependenciesTest extends ElasticsearchDependenciesTest {
 
-    @Override protected ElasticsearchStorage storage() {
+    @Override protected ElasticsearchHttpStorage storage() {
       return storage.get();
     }
   }
 
   public static class SpanConsumerTest extends ElasticsearchSpanConsumerTest {
 
-    @Override protected ElasticsearchStorage storage() {
+    @Override protected ElasticsearchHttpStorage storage() {
       return storage.get();
+    }
+
+    @Override String baseUrl() {
+      return storage.baseUrl();
     }
   }
 
   public static class ElasticsearchSpanStoreTest extends SpanStoreTest {
 
-    @Override protected ElasticsearchStorage storage() {
+    @Override protected ElasticsearchHttpStorage storage() {
       return storage.get();
     }
 
@@ -53,7 +57,7 @@ public class ElasticsearchV2HttpTest {
 
   public static class StrictTraceIdFalseTest extends ElasticsearchStrictTraceIdFalseTest {
 
-    @Override protected ElasticsearchStorage.Builder storageBuilder() {
+    @Override protected ElasticsearchHttpStorage.Builder storageBuilder() {
       return ElasticsearchV2HttpTest.storage.computeStorageBuilder();
     }
   }

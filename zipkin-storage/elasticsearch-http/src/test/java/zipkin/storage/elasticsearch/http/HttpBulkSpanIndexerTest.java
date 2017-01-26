@@ -14,7 +14,6 @@
 package zipkin.storage.elasticsearch.http;
 
 import java.io.IOException;
-import okhttp3.OkHttpClient;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
 import okhttp3.mockwebserver.RecordedRequest;
@@ -38,14 +37,15 @@ public class HttpBulkSpanIndexerTest {
 
   CallbackCaptor<Void> callback = new CallbackCaptor<>();
 
-  HttpBulkSpanIndexer indexer =
-      new HttpBulkSpanIndexer((HttpClient) new HttpClientBuilder(new OkHttpClient())
-          .hosts(asList(es.url("").toString()))
-          .buildFactory().create("zipkin-*"), "span");
+  ElasticsearchHttpStorage storage = ElasticsearchHttpStorage.builder()
+      .hosts(asList(es.url("").toString()))
+      .build();
+
+  HttpBulkSpanIndexer indexer = new HttpBulkSpanIndexer(storage);
 
   @After
   public void close() throws IOException {
-    indexer.client.http.dispatcher().executorService().shutdownNow();
+    storage.lazyHttp.get().ok.dispatcher().executorService().shutdownNow();
   }
 
   @Test
@@ -72,5 +72,27 @@ public class HttpBulkSpanIndexerTest {
     RecordedRequest request = es.takeRequest();
     assertThat(request.getBody().readByteString().utf8())
         .endsWith(new String(Codec.JSON.writeSpan(TestObjects.LOTS_OF_SPANS[0]), UTF_8) + "\n");
+  }
+
+  @Test
+  public void addsPipelineId() throws Exception {
+    close();
+
+    indexer = new HttpBulkSpanIndexer(storage = ElasticsearchHttpStorage.builder()
+        .hosts(asList(es.url("").toString()))
+        .pipeline("zipkin")
+        .build());
+
+    es.enqueue(new MockResponse());
+
+    CallbackCaptor<Void> callback = new CallbackCaptor<>();
+    indexer
+        .add("zipkin-2016-10-01", TestObjects.TRACE.get(0), (Long) null)
+        .execute(callback);
+    callback.get();
+
+    RecordedRequest request = es.takeRequest();
+    assertThat(request.getPath())
+        .isEqualTo("/_bulk?pipeline=zipkin");
   }
 }

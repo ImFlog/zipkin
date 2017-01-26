@@ -17,6 +17,10 @@ import java.io.IOException;
 import okhttp3.Call;
 import okhttp3.Response;
 import okhttp3.ResponseBody;
+import okhttp3.internal.http.HttpHeaders;
+import okio.BufferedSource;
+import okio.GzipSource;
+import okio.Okio;
 import zipkin.storage.Callback;
 
 import static zipkin.internal.Util.propagateIfFatal;
@@ -40,11 +44,23 @@ class CallbackAdapter<V> implements okhttp3.Callback {
 
   /** Note: this runs on the {@link okhttp3.OkHttpClient#dispatcher() dispatcher} thread! */
   @Override public void onResponse(Call call, Response response) {
-    try (ResponseBody responseBody = response.body()) {
+    if (!HttpHeaders.hasBody(response)) {
       if (response.isSuccessful()) {
-        delegate.onSuccess(convert(responseBody));
+        delegate.onSuccess(null);
       } else {
         delegate.onError(new IllegalStateException("response failed: " + response));
+      }
+      return;
+    }
+    try (ResponseBody responseBody = response.body()) {
+      BufferedSource content = responseBody.source();
+      if ("gzip".equalsIgnoreCase(response.header("Content-Encoding"))) {
+        content = Okio.buffer(new GzipSource(responseBody.source()));
+      }
+      if (response.isSuccessful()) {
+        delegate.onSuccess(convert(content));
+      } else {
+        delegate.onError(new IllegalStateException("response failed: " + content.readUtf8()));
       }
     } catch (Throwable t) {
       propagateIfFatal(t);
@@ -52,7 +68,7 @@ class CallbackAdapter<V> implements okhttp3.Callback {
     }
   }
 
-  V convert(ResponseBody responseBody) throws IOException {
+  V convert(BufferedSource content) throws IOException {
     return null;
   }
 }

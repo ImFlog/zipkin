@@ -11,9 +11,8 @@
  * or implied. See the License for the specific language governing permissions and limitations under
  * the License.
  */
-package zipkin.storage.elasticsearch;
+package zipkin.storage.elasticsearch.http;
 
-import com.google.common.base.Throwables;
 import java.io.IOException;
 import java.util.List;
 import zipkin.DependencyLink;
@@ -23,7 +22,6 @@ import zipkin.internal.Util;
 import zipkin.storage.DependenciesTest;
 import zipkin.storage.InMemorySpanStore;
 import zipkin.storage.InMemoryStorage;
-import zipkin.storage.elasticsearch.http.HttpElasticsearchDependencyWriter;
 
 import static zipkin.TestObjects.DAY;
 import static zipkin.TestObjects.TODAY;
@@ -32,7 +30,7 @@ import static zipkin.internal.Util.midnightUTC;
 
 public abstract class ElasticsearchDependenciesTest extends DependenciesTest {
 
-  protected abstract ElasticsearchStorage storage();
+  protected abstract ElasticsearchHttpStorage storage();
 
   @Override public void clear() throws IOException {
     storage().clear();
@@ -58,11 +56,6 @@ public abstract class ElasticsearchDependenciesTest extends DependenciesTest {
   protected void writeDependencyLinks(List<DependencyLink> links, long timestampMillis) {
     long midnight = Util.midnightUTC(timestampMillis);
     String index = storage().indexNameFormatter.indexNameForTimestamp(midnight);
-    try {
-      HttpElasticsearchDependencyWriter.writeDependencyLinks(storage().client(), links, index,
-          ElasticsearchConstants.DEPENDENCY_LINK);
-    } catch (Exception ex) {
-      throw Throwables.propagate(ex);
-    }
+    HttpElasticsearchDependencyWriter.writeDependencyLinks(storage(), links, index);
   }
 }

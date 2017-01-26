@@ -1,5 +1,5 @@
 /**
- * Copyright 2015-2016 The OpenZipkin Authors
+ * Copyright 2015-2017 The OpenZipkin Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License. You may obtain a copy of the License at
@@ -11,7 +11,7 @@
  * or implied. See the License for the specific language governing permissions and limitations under
  * the License.
  */
-package zipkin.storage.elasticsearch;
+package zipkin.storage.elasticsearch.http;
 
 import org.junit.AssumptionViolatedException;
 import zipkin.Component;
@@ -21,7 +21,7 @@ import java.io.IOException;
 
 public abstract class ElasticsearchStrictTraceIdFalseTest extends zipkin.storage.StrictTraceIdFalseTest {
 
-  private final ElasticsearchStorage storage;
+  private final ElasticsearchHttpStorage storage;
 
   public ElasticsearchStrictTraceIdFalseTest() {
     storage = storageBuilder()
@@ -35,7 +35,7 @@ public abstract class ElasticsearchStrictTraceIdFalseTest extends zipkin.storage
     }
   }
 
-  protected abstract ElasticsearchStorage.Builder storageBuilder();
+  protected abstract ElasticsearchHttpStorage.Builder storageBuilder();
 
   @Override protected StorageComponent storage() {
     return storage;

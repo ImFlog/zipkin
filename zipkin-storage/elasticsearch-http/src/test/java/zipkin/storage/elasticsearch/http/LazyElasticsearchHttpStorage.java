@@ -1,5 +1,5 @@
 /**
- * Copyright 2015-2016 The OpenZipkin Authors
+ * Copyright 2015-2017 The OpenZipkin Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  * in compliance with the License. You may obtain a copy of the License at
@@ -11,12 +11,12 @@
  * or implied. See the License for the specific language governing permissions and limitations under
  * the License.
  */
-package zipkin.storage.elasticsearch;
+package zipkin.storage.elasticsearch.http;
 
-import com.google.common.base.Throwables;
-import com.google.common.collect.ImmutableList;
 import java.io.IOException;
+import java.util.Arrays;
 import okhttp3.OkHttpClient;
+import okhttp3.logging.HttpLoggingInterceptor;
 import org.junit.AssumptionViolatedException;
 import org.junit.rules.TestRule;
 import org.junit.runner.Description;
@@ -25,9 +25,8 @@ import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.HttpWaitStrategy;
 import zipkin.Component;
 import zipkin.internal.LazyCloseable;
-import zipkin.storage.elasticsearch.http.HttpClientBuilder;
 
-public class LazyElasticsearchHttpStorage extends LazyCloseable<ElasticsearchStorage>
+public class LazyElasticsearchHttpStorage extends LazyCloseable<ElasticsearchHttpStorage>
     implements TestRule {
 
   final String image;
@@ -38,7 +37,7 @@ public class LazyElasticsearchHttpStorage extends LazyCloseable<ElasticsearchSto
     this.image = image;
   }
 
-  @Override protected ElasticsearchStorage compute() {
+  @Override protected ElasticsearchHttpStorage compute() {
     try {
       container = new GenericContainer(image)
           .withExposedPorts(9200)
@@ -49,7 +48,7 @@ public class LazyElasticsearchHttpStorage extends LazyCloseable<ElasticsearchSto
       // Ignore
     }
 
-    ElasticsearchStorage result = computeStorageBuilder().build();
+    ElasticsearchHttpStorage result = computeStorageBuilder().build();
     Component.CheckResult check = result.check();
     if (check.ok) {
       return result;
@@ -58,30 +57,34 @@ public class LazyElasticsearchHttpStorage extends LazyCloseable<ElasticsearchSto
     }
   }
 
-  public ElasticsearchStorage.Builder computeStorageBuilder() {
-    ElasticsearchStorage.Builder builder =
-        ElasticsearchStorage.builder(HttpClientBuilder.create(new OkHttpClient()))
+  ElasticsearchHttpStorage.Builder computeStorageBuilder() {
+    ElasticsearchHttpStorage.Builder builder =
+        new ElasticsearchHttpStorage.Builder(new OkHttpClient.Builder()
+            .addNetworkInterceptor(
+                new HttpLoggingInterceptor().setLevel(HttpLoggingInterceptor.Level.BODY)).build())
             .index("test_zipkin_http").flushOnWrites(true);
+    return builder.hosts(Arrays.asList(baseUrl()));
+  }
 
+  String baseUrl() {
     if (container != null && container.isRunning()) {
-      String endpoint = String.format("http://%s:%d", container.getContainerIpAddress(),
-          container.getMappedPort(9200));
-      builder.hosts(ImmutableList.of(endpoint));
+      return String.format("http://%s:%d",
+          container.getContainerIpAddress(),
+          container.getMappedPort(9200)
+      );
     } else {
       // Use localhost if we failed to start a container (i.e. Docker is not available)
-      builder.hosts(ImmutableList.of("localhost:9200"));
+      return "http://localhost:9200";
     }
-
-    return builder;
   }
 
   @Override public void close() {
     try {
-      ElasticsearchStorage storage = maybeNull();
+      ElasticsearchHttpStorage storage = maybeNull();
 
       if (storage != null) storage.close();
     } catch (IOException e) {
-      Throwables.propagate(e);
+      throw new RuntimeException(e);
     } finally {
       if (container != null) container.stop();
     }
